@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Code Editor</title>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+    <!-- CodeMirror Theme (Dracula) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/dracula.min.css">
+
+    <style>
+        :root {
+            --bg-dark: #1a202c;
+            --bg-medium: #2d3748;
+            --bg-light: #4a5568;
+            --text-light: #e2e8f0;
+            --text-medium: #cbd5e0;
+            --text-dark: #a0aec0;
+            --indigo-600: #4f46e5;
+            --indigo-700: #4338ca;
+            --indigo-500: #6366f1;
+            --red-600: #dc2626;
+            --red-700: #b91c1c;
+            --white: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            padding-bottom: 5rem;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        .shared-content-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            background-color: var(--bg-medium);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            min-height: 300px;
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-size: 1rem;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            flex-grow: 1;
+            border: 1px solid var(--bg-light);
+        }
+
+        .CodeMirror-scroll {
+            overflow: auto !important;
+        }
+
+        .fixed-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: var(--bg-medium);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 10;
+        }
+
+        .fixed-controls .btn-base {
+            margin-top: 0;
+            margin-bottom: 0;
+            width: auto;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+        .btn-base {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            border-radius: 0.375rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            color: var(--white);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-base svg {
+            height: 1.25rem;
+            width: 1.25rem;
+            display: inline-block;
+            margin-right: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .btn-red {
+            background-color: var(--red-600);
+        }
+
+        .btn-red:hover {
+            background-color: var(--red-700);
+        }
+
+        .h2-section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--blue-300);
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="main-content">
+        <div id="sharedCodeEditorContainer" class="shared-content-container">
+            <h2 class="h2-section-title">Main Shared Code Editor</h2>
+            <textarea id="sharedCodeEditor"></textarea>
+        </div>
+    </main>
+
+    <div id="sharedControls" class="fixed-controls">
+        <button id="clearSharedCodeEditor" class="btn-base btn-red">
+            Clear Code Editor
+        </button>
+    </div>
+
+    <!-- CodeMirror Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/go/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/swift/swift.min.js"></script>
+
+    <script>
+        const fileId = 1;
+        const language = "javascript";
+        const getUrl = "https://peugmvvuvjhxdmupzycb.supabase.co/functions/v1/get_data";
+        const postUrl = "https://peugmvvuvjhxdmupzycb.supabase.co/functions/v1/shared_documents";
+
+        let sharedCodeMirrorInstance;
+
+        // 🔧 Initialize CodeMirror
+        function initCodeMirror() {
+            sharedCodeMirrorInstance = CodeMirror.fromTextArea(
+                document.getElementById("sharedCodeEditor"), {
+                lineNumbers: true,
+                mode: language,
+                theme: "dracula",
+                tabSize: 2,
+                indentUnit: 4,
+                indentWithTabs: false,
+            }
+            );
+        }
+
+        // 📥 Get content from Supabase
+        async function fetchCodeFromSupabase() {
+            try {
+                const res = await fetch(getUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: fileId }),
+                });
+
+                const data = await res.json();
+                console.log("📥 [GET] Parsed response:", data);
+
+                if (res.ok && data.content !== undefined) {
+                    sharedCodeMirrorInstance.setValue(data.content);
+                    console.log("✅ [GET] Editor updated from Supabase.");
+                } else {
+                    console.error("❌ [GET] Failed to fetch:", data.message || data.error);
+                }
+            } catch (err) {
+                console.error("🚨 [GET] Error:", err);
+            }
+        }
+
+        // 📤 Save content to Supabase
+        async function pushCodeToSupabase() {
+            const content = sharedCodeMirrorInstance.getValue();
+            const payload = { id: fileId, fileContent: content, language };
+
+            try {
+                const res = await fetch(postUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await res.json();
+                console.log("📥 [SAVE] Parsed response:", data);
+
+                const isSuccess =
+                    res.ok &&
+                    data.message === "Document updated successfully" &&
+                    data.file === "code.txt";
+
+                if (isSuccess) {
+                    console.log("✅ [SAVE] Code successfully saved to Supabase.");
+                } else {
+                    console.error("❌ [SAVE] Save failed:", data.message || data.error || data);
+                }
+            } catch (err) {
+                console.error("🚨 [SAVE] Error:", err);
+            }
+        }
+
+        // 🧹 Clear editor content
+        function setupClearEditorButton() {
+            document.getElementById("clearSharedCodeEditor").addEventListener("click", () => {
+                sharedCodeMirrorInstance.setValue("");
+            });
+        }
+
+        // 🔁 Loop: GET -> wait -> PUSH -> wait -> repeat
+        async function loopSync() {
+            while (true) {
+                await fetchCodeFromSupabase();
+                await new Promise(resolve => setTimeout(resolve, 10000)); // wait 10s
+                await pushCodeToSupabase();
+                await new Promise(resolve => setTimeout(resolve, 20000)); // wait 10s
+            }
+        }
+
+        // 🚀 Start everything
+        window.onload = () => {
+            console.log("✅ DOM Loaded. Initializing CodeMirror...");
+
+            initCodeMirror();
+            setupClearEditorButton();
+            loopSync(); // Begin fetch→wait→push→wait loop
+        };
+    </script>
+</body>
+
+</html>
