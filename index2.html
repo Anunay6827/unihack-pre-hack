@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Workspace</title>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+    <!-- CodeMirror Theme (Dracula) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/dracula.min.css">
+    <style>
+        /* CSS Variables for easier color management */
+        :root {
+            --bg-dark: #1a202c;
+            --bg-medium: #2d3748;
+            --bg-light: #4a5568;
+            --text-light: #e2e8f0;
+            --text-medium: #cbd5e0;
+            --text-dark: #a0aec0;
+            --indigo-600: #4f46e5;
+            --indigo-700: #4338ca;
+            --indigo-500: #6366f1;
+            --purple-600: #9333ea;
+            --purple-700: #7e22ce;
+            --purple-300: #d8b4fe;
+            --blue-600: #2563eb;
+            --blue-700: #1d4ed8;
+            --blue-300: #93c5fd;
+            --green-600: #16a34a;
+            --green-700: #15803d;
+            --green-300: #86efac;
+            --red-600: #dc2626;
+            --red-700: #b91c1c;
+            --orange-500: #f97316; /* For individual canvas drawing */
+            --white: #ffffff;
+        }
+
+        /* Base styles */
+        * {
+            box-sizing: border-box; /* Consistent box model */
+        }
+
+        html, body {
+            height: 100%; /* Ensure html and body take full viewport height */
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased; /* Smoother fonts */
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Main layout container */
+        .workspace-container {
+            display: flex;
+            flex: 1; /* Allows it to grow and take available height */
+            /* Removed overflow: hidden; from here in previous fix */
+        }
+
+        /* Side menu styles */
+        .side-menu {
+            width: 0; /* Hidden by default */
+            min-width: 0; /* Ensure it collapses fully */
+            background-color: var(--bg-medium);
+            overflow-x: hidden;
+            overflow-y: auto; /* Allow scrolling within the side menu */
+            transition: width 0.3s ease-in-out, min-width 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            padding-top: 1rem;
+            flex-shrink: 0; /* Prevent shrinking when content grows */
+            border-right: 1px solid var(--bg-light); /* Subtle separator */
+        }
+        .side-menu.open {
+            width: 280px; /* Open width */
+            min-width: 280px;
+            padding: 1rem;
+        }
+
+        /* Menu Toggle Button */
+        .menu-toggle-button {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 20;
+            padding: 0.75rem; /* p-3 */
+            background-color: var(--indigo-600);
+            color: var(--white);
+            border-radius: 9999px; /* rounded-full */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-lg */
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .menu-toggle-button:hover {
+            background-color: var(--indigo-700);
+        }
+        .menu-toggle-button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); /* focus:ring-2 focus:ring-indigo-500 */
+        }
+        .menu-toggle-button svg {
+            height: 1.5rem; /* h-6 */
+            width: 1.5rem; /* w-6 */
+            vertical-align: middle;
+        }
+
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-dark);
+            padding: 1rem;
+            padding-bottom: 5rem; /* Space for fixed clear buttons at the bottom */
+            overflow-y: auto; /* Allow vertical scrolling for main content */
+            overflow-x: hidden; /* Prevent horizontal scrolling */
+        }
+
+        /* Shared content containers (canvas and code editor) */
+        .shared-content-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            background-color: var(--bg-medium);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            min-height: 300px; /* Minimum height for each shared section */
+            margin-bottom: 1rem; /* Space between sections if stacked */
+        }
+
+        /* Shared Canvas styles */
+        #sharedCanvas {
+            background-color: var(--bg-dark); /* Dark background for canvas */
+            border-radius: 0.5rem;
+            border: 1px solid var(--bg-light); /* Light border */
+            cursor: crosshair; /* Indicate drawing mode */
+            touch-action: none; /* Prevent browser default touch actions like scrolling/zooming */
+            flex-grow: 1; /* Allow canvas to take available space */
+            width: 100%; /* Fill parent width */
+            height: 100%; /* Fill parent height */
+            display: block; /* Remove extra space below canvas */
+        }
+
+        /* CodeMirror specific styles */
+        .CodeMirror {
+            height: 100%; /* Make CodeMirror fill its container */
+            font-size: 1rem;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            flex-grow: 1;
+            border: 1px solid var(--bg-light); /* Add border to CodeMirror */
+        }
+        .CodeMirror-scroll {
+            overflow: auto !important;
+        }
+
+        /* Dynamic content container (for individual files) */
+        #dynamicContent {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            border-radius: 0.5rem;
+            overflow: hidden; /* Hide overflow for content within dynamic area */
+            background-color: var(--bg-medium); /* Background for dynamic content */
+            padding: 1rem;
+        }
+        #dynamicContent textarea {
+            width: 100%;
+            height: 100%;
+            border: none; /* CodeMirror handles border */
+            resize: none; /* Prevent manual resize */
+            background-color: transparent; /* CodeMirror theme handles background */
+            color: inherit; /* CodeMirror theme handles text color */
+        }
+        #dynamicContent canvas {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark); /* Dark background for individual canvas */
+            border-radius: 0.5rem;
+            border: 1px solid var(--bg-light);
+            cursor: crosshair;
+            touch-action: none;
+            flex-grow: 1;
+        }
+
+        /* Fixed controls at the bottom */
+        .fixed-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: var(--bg-medium);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 10;
+        }
+        .fixed-controls .btn-base {
+            margin-top: 0; /* Override default margin-top */
+            margin-bottom: 0; /* Override default margin-bottom */
+            width: auto; /* Allow buttons to size content */
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+
+        /* Utility classes */
+        .hidden-element {
+            display: none !important;
+        }
+
+        /* Headings */
+        .h2-main {
+            font-size: 2rem; /* text-2xl */
+            font-weight: 700; /* font-bold */
+            margin-bottom: 1.5rem; /* mb-6 */
+            color: var(--white);
+            text-align: center;
+        }
+        .h2-section-title { /* For shared canvas/editor titles within main content */
+            font-size: 1.5rem; /* text-2xl */
+            font-weight: 700; /* font-bold */
+            margin-bottom: 1rem; /* mb-4 */
+            color: var(--purple-300); /* Default to purple, can be overridden */
+            text-align: center;
+        }
+        .h3-side-menu {
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 600; /* font-semibold */
+            color: var(--text-dark);
+            margin-bottom: 0.75rem; /* mb-3 */
+        }
+        .h3-dynamic-content-title {
+            font-size: 1.5rem; /* text-2xl */
+            font-weight: 700; /* font-bold */
+            margin-bottom: 1rem; /* mb-4 */
+            color: var(--text-light);
+            text-align: center;
+        }
+
+
+        /* Buttons common styles */
+        .btn-base {
+            width: 100%;
+            padding: 0.75rem 1rem; /* px-4 py-3 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            text-align: left;
+            border-radius: 0.375rem; /* rounded-md */
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            color: var(--white);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* shadow-md */
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        .btn-base svg {
+            height: 1.25rem; /* h-5 */
+            width: 1.25rem; /* w-5 */
+            display: inline-block;
+            margin-right: 0.5rem; /* mr-2 */
+            flex-shrink: 0;
+        }
+
+        /* Specific button colors */
+        .btn-purple { background-color: var(--purple-600); }
+        .btn-purple:hover { background-color: var(--purple-700); }
+
+        .btn-blue { background-color: var(--blue-600); }
+        .btn-blue:hover { background-color: var(--blue-700); }
+
+        .btn-green { background-color: var(--green-600); }
+        .btn-green:hover { background-color: var(--green-700); }
+
+        .btn-red {
+            background-color: var(--red-600);
+            margin-top: 1rem; /* mt-4 */
+            text-align: center;
+            justify-content: center; /* Center text and icon */
+        }
+        .btn-red:hover { background-color: var(--red-700); }
+
+        .btn-yellow { /* New style for rename button */
+            background-color: #f59e0b; /* amber-500 */
+            margin-top: 0.5rem;
+            text-align: center;
+            justify-content: center;
+        }
+        .btn-yellow:hover {
+            background-color: #d97706; /* amber-600 */
+        }
+
+        .btn-gray { /* New style for upload button */
+            background-color: var(--bg-light);
+        }
+        .btn-gray:hover {
+            background-color: var(--bg-medium);
+        }
+
+
+        /* File list item buttons */
+        .file-item-btn {
+            background-color: var(--bg-light); /* bg-gray-600 */
+            color: var(--text-dark); /* text-gray-200 */
+        }
+        .file-item-btn:hover {
+            background-color: var(--bg-medium); /* hover:bg-gray-700 */
+        }
+        .file-item-btn.active {
+            background-color: var(--bg-medium); /* bg-gray-700 */
+            color: var(--white);
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); /* shadow-inner */
+        }
+
+        /* Dividers */
+        .divider {
+            border-top: 1px solid var(--bg-light); /* border-t border-gray-600 */
+            margin-top: 1rem; /* my-4 */
+            margin-bottom: 1rem; /* my-4 */
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Menu Toggle Button -->
+    <button id="menuToggleButton" class="menu-toggle-button">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    </button>
+
+    <div class="workspace-container">
+        <!-- Side Menu -->
+        <aside id="sideMenu" class="side-menu">
+            <h2 class="h2-main">Workspace</h2>
+
+            <button id="showSharedCanvasViewBtn" class="btn-base btn-purple">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-5 4v-4l7.857-3.929a1 1 0 000-1.786L10 6V2a1 1 0 00-1-1H3a1 1 0 00-1 1v16a1 1 0 001 1h6a1 1 0 001-1z" />
+                </svg>
+                Shared Whiteboard
+            </button>
+            <button id="showSharedCodeEditorViewBtn" class="btn-base btn-blue">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Shared Code Editor
+            </button>
+
+            <div class="divider"></div>
+
+            <h3 class="h3-side-menu">Individual Files</h3>
+            <button id="createNewCodeEditorBtn" class="btn-base btn-blue">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                New Code Editor
+            </button>
+            <button id="createNewDrawingCanvasBtn" class="btn-base btn-green">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                New Drawing Canvas
+            </button>
+            <button id="uploadFileBtn" class="btn-base btn-gray">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Upload File
+            </button>
+            <input type="file" id="fileInput" style="display: none;">
+
+
+            <div class="divider"></div>
+
+            <h3 class="h3-side-menu">Your Files</h3>
+            <div id="fileList" style="flex-grow: 1; overflow-y: auto; padding-right: 0.5rem;">
+                <!-- Dynamically populated file list -->
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Shared Canvas Section -->
+            <div id="sharedCanvasContainer" class="shared-content-container">
+                <h2 class="h2-section-title" style="color: var(--purple-300);">Main Shared Whiteboard</h2>
+                <canvas id="sharedCanvas"></canvas>
+            </div>
+
+            <!-- Shared Code Editor Section -->
+            <div id="sharedCodeEditorContainer" class="shared-content-container hidden-element">
+                <h2 class="h2-section-title" style="color: var(--blue-300);">Main Shared Code Editor</h2>
+                <textarea id="sharedCodeEditor"></textarea>
+            </div>
+
+            <!-- Dynamic Content Area (for individual editors/canvases) -->
+            <div id="dynamicContent" class="hidden-element content-card">
+                <!-- Title for individual file -->
+                <h2 id="dynamicContentTitle" class="h3-dynamic-content-title"></h2>
+                <!-- Content will be injected here (textarea for CodeMirror or canvas for drawing) -->
+                <div id="dynamicFileContentArea" style="flex-grow: 1; display: flex; flex-direction: column;"></div>
+                <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;">
+                    <button id="renameFileBtn" class="btn-base btn-yellow" style="width: auto; padding-left: 1.5rem; padding-right: 1.5rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Rename
+                    </button>
+                    <button id="clearIndividualFileBtn" class="btn-base btn-red" style="width: auto; padding-left: 1.5rem; padding-right: 1.5rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Fixed controls for shared sections -->
+    <div id="sharedControls" class="fixed-controls">
+        <button id="clearSharedCanvas" class="btn-base btn-red hidden-element">
+            Clear Whiteboard
+        </button>
+        <button id="clearSharedCodeEditor" class="btn-base btn-red hidden-element">
+            Clear Code Editor
+        </button>
+    </div>
+
+    <!-- CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <!-- CodeMirror Modes (add more as needed) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/clike/clike.min.js"></script> <!-- For C++, Java, C# -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/go/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/swift/swift.min.js"></script>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const menuToggleButton = document.getElementById('menuToggleButton');
+            const sideMenu = document.getElementById('sideMenu');
+            const showSharedCanvasViewBtn = document.getElementById('showSharedCanvasViewBtn');
+            const showSharedCodeEditorViewBtn = document.getElementById('showSharedCodeEditorViewBtn');
+            const createNewCodeEditorBtn = document.getElementById('createNewCodeEditorBtn');
+            const createNewDrawingCanvasBtn = document.getElementById('createNewDrawingCanvasBtn');
+            const uploadFileBtn = document.getElementById('uploadFileBtn');
+            const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+
+            const sharedCanvasContainer = document.getElementById('sharedCanvasContainer');
+            const sharedCodeEditorContainer = document.getElementById('sharedCodeEditorContainer');
+            const dynamicContent = document.getElementById('dynamicContent');
+            const dynamicContentTitle = document.getElementById('dynamicContentTitle');
+            const dynamicFileContentArea = document.getElementById('dynamicFileContentArea');
+
+            const renameFileBtn = document.getElementById('renameFileBtn');
+            const clearIndividualFileBtn = document.getElementById('clearIndividualFileBtn');
+
+            const sharedControls = document.getElementById('sharedControls');
+            const clearSharedCanvasBtn = document.getElementById('clearSharedCanvas');
+            const clearSharedCodeEditorBtn = document.getElementById('clearSharedCodeEditor');
+
+            // --- Global State ---
+            let currentActiveTabId = 'sharedCanvas';
+            let fileCounter = 0;
+            const files = {};
+            let activeCodeMirrorInstance = null;
+            let activeIndividualCanvasCtx = null; // Stores the 2D context of the currently active individual canvas
+
+            // --- CodeMirror Mode Mapping (for file uploads) ---
+            const modeMap = {
+                'js': 'javascript',
+                'html': 'htmlmixed',
+                'css': 'css',
+                'xml': 'xml',
+                'json': 'javascript', // JSON is often highlighted like JS
+                'py': 'python',
+                'java': 'clike',
+                'c': 'clike',
+                'cpp': 'clike',
+                'go': 'go',
+                'swift': 'swift'
+            };
+
+            // --- Side Menu Toggle ---
+            menuToggleButton.addEventListener('click', () => {
+                sideMenu.classList.toggle('open');
+                if (window.innerWidth <= 768) {
+                    if (sideMenu.classList.contains('open')) {
+                        menuToggleButton.style.left = 'calc(100% - 4rem)';
+                    } else {
+                        menuToggleButton.style.left = '1rem';
+                    }
+                }
+            });
+
+            // --- Canvas Utility Functions ---
+            // Function to handle canvas resizing and redrawing
+            function handleCanvasResize(canvas, ctx, history) {
+                // Defer the dimension update to the next animation frame
+                // This helps prevent "ResizeObserver loop completed with undelivered notifications"
+                requestAnimationFrame(() => {
+                    // Only update if the actual rendered dimensions have changed
+                    if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
+                        canvas.width = canvas.offsetWidth;
+                        canvas.height = canvas.offsetHeight;
+                        redrawCanvas(ctx, history);
+                    }
+                });
+            }
+
+            function getCanvasMousePos(canvas, evt) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: evt.clientX - rect.left,
+                    y: evt.clientY - rect.top
+                };
+            }
+
+            function getCanvasTouchPos(canvas, evt) {
+                const rect = canvas.getBoundingClientRect();
+                const touch = evt.touches[0];
+                return {
+                    x: touch.clientX - rect.left,
+                    y: touch.clientY - rect.top
+                };
+            }
+
+            function drawLineOnCtx(ctx, x1, y1, x2, y2, color, width) {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.stroke();
+            }
+
+            function redrawCanvas(ctx, history) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                history.forEach(segment => {
+                    drawLineOnCtx(ctx, segment.x1, segment.y1, segment.x2, segment.y2, segment.color, segment.width);
+                });
+            }
+
+
+            // --- Shared Canvas Logic ---
+            const sharedCanvas = document.getElementById('sharedCanvas');
+            const sharedCtx = sharedCanvas.getContext('2d');
+            let sharedDrawingHistory = [];
+
+            sharedCtx.lineWidth = 2;
+            sharedCtx.lineCap = 'round';
+            sharedCtx.strokeStyle = 'var(--white)'; // Canvas ink to white
+
+            let isSharedDrawing = false;
+            let lastSharedX = 0;
+            let lastSharedY = 0;
+
+            // Shared Canvas Drawing Events
+            sharedCanvas.addEventListener('mousedown', (e) => {
+                isSharedDrawing = true;
+                const pos = getCanvasMousePos(sharedCanvas, e);
+                [lastSharedX, lastSharedY] = [pos.x, pos.y];
+            });
+
+            sharedCanvas.addEventListener('mousemove', (e) => {
+                if (!isSharedDrawing) return;
+                const pos = getCanvasMousePos(sharedCanvas, e);
+                const newX = pos.x;
+                const newY = pos.y;
+
+                drawLineOnCtx(sharedCtx, lastSharedX, lastSharedY, newX, newY, sharedCtx.strokeStyle, sharedCtx.lineWidth);
+                sharedDrawingHistory.push({ x1: lastSharedX, y1: lastSharedY, x2: newX, y2: newY, color: sharedCtx.strokeStyle, width: sharedCtx.lineWidth });
+
+                [lastSharedX, lastSharedY] = [newX, newY];
+            });
+
+            sharedCanvas.addEventListener('mouseup', () => isSharedDrawing = false);
+            sharedCanvas.addEventListener('mouseout', () => isSharedDrawing = false);
+
+            sharedCanvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isSharedDrawing = true;
+                const pos = getCanvasTouchPos(sharedCanvas, e);
+                [lastSharedX, lastSharedY] = [pos.x, pos.y];
+            });
+
+            sharedCanvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!isSharedDrawing) return;
+                const pos = getCanvasTouchPos(sharedCanvas, e);
+                const newX = pos.x;
+                const newY = pos.y;
+
+                drawLineOnCtx(sharedCtx, lastSharedX, lastSharedY, newX, newY, sharedCtx.strokeStyle, sharedCtx.lineWidth);
+                sharedDrawingHistory.push({ x1: lastSharedX, y1: lastSharedY, x2: newX, y2: newY, color: sharedCtx.strokeStyle, width: sharedCtx.lineWidth });
+
+                [lastSharedX, lastSharedY] = [newX, newY];
+            });
+
+            sharedCanvas.addEventListener('touchend', () => isSharedDrawing = false);
+            sharedCanvas.addEventListener('touchcancel', () => isSharedDrawing = false);
+
+            clearSharedCanvasBtn.addEventListener('click', () => {
+                sharedCtx.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+                sharedDrawingHistory = [];
+            });
+
+            // --- Shared Code Editor Logic ---
+            const sharedCodeEditorTextArea = document.getElementById('sharedCodeEditor');
+            const sharedCodeMirrorInstance = CodeMirror.fromTextArea(sharedCodeEditorTextArea, {
+                lineNumbers: true,
+                mode: 'javascript',
+                theme: 'dracula',
+                indentUnit: 4,
+                tabSize: 4,
+                lineWrapping: true
+            });
+
+            sharedCodeMirrorInstance.setValue(`// This is the main shared code editor!
+// Everyone collaborating on this workspace can see and edit this code.
+
+function calculateSum(a, b) {
+    return a + b;
+}
+
+console.log(calculateSum(5, 10)); // Should output 15
+
+// Try typing here to see it in action!
+`);
+
+            clearSharedCodeEditorBtn.addEventListener('click', () => {
+                sharedCodeMirrorInstance.setValue('');
+            });
+
+
+            // --- File Management and Rendering Logic ---
+
+            function generateUniqueId() {
+                return 'file-' + Date.now() + '-' + (fileCounter++);
+            }
+
+            function getCodeMirrorMode(fileName) {
+                const ext = fileName.split('.').pop().toLowerCase();
+                return modeMap[ext] || 'javascript'; // Default to javascript if unknown
+            }
+
+            function updateFileList() {
+                fileList.innerHTML = ''; // Clear current list
+                for (const id in files) {
+                    const file = files[id];
+                    const fileItem = document.createElement('button');
+                    fileItem.className = `btn-base file-item-btn ${currentActiveTabId === id ? 'active' : ''}`;
+                    fileItem.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            ${file.type === 'code' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />' : ''}
+                            ${file.type === 'drawing' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />' : ''}
+                        </svg>
+                        ${file.name}
+                    `;
+                    fileItem.dataset.fileId = id;
+                    fileItem.addEventListener('click', () => showFile(id));
+                    fileList.appendChild(fileItem);
+                }
+            }
+
+            function hideAllContentSections() {
+                sharedCanvasContainer.classList.add('hidden-element');
+                sharedCodeEditorContainer.classList.add('hidden-element');
+                dynamicContent.classList.add('hidden-element');
+                sharedControls.classList.add('hidden-element');
+                clearSharedCanvasBtn.classList.add('hidden-element');
+                clearSharedCodeEditorBtn.classList.add('hidden-element');
+            }
+
+            function showSharedCanvasView() {
+                saveCurrentFileContent();
+                hideAllContentSections();
+
+                currentActiveTabId = 'sharedCanvas';
+                sharedCanvasContainer.classList.remove('hidden-element');
+                sharedControls.classList.remove('hidden-element');
+                clearSharedCanvasBtn.classList.remove('hidden-element');
+
+                activeCodeMirrorInstance = null;
+                activeIndividualCanvasCtx = null;
+
+                // Initial sizing and redraw for shared canvas
+                sharedCanvas.width = sharedCanvas.offsetWidth;
+                sharedCanvas.height = sharedCanvas.offsetHeight;
+                redrawCanvas(sharedCtx, sharedDrawingHistory);
+                updateFileList();
+            }
+
+            function showSharedCodeEditorView() {
+                saveCurrentFileContent();
+                hideAllContentSections();
+
+                currentActiveTabId = 'sharedCodeEditor';
+                sharedCodeEditorContainer.classList.remove('hidden-element');
+                sharedControls.classList.remove('hidden-element');
+                clearSharedCodeEditorBtn.classList.remove('hidden-element');
+
+                activeCodeMirrorInstance = null;
+                activeIndividualCanvasCtx = null;
+
+                sharedCodeMirrorInstance.refresh();
+                updateFileList();
+            }
+
+            function showFile(fileId) {
+                saveCurrentFileContent();
+                hideAllContentSections();
+
+                currentActiveTabId = fileId;
+                dynamicContent.classList.remove('hidden-element');
+                dynamicFileContentArea.innerHTML = '';
+
+                const file = files[fileId];
+                if (!file) {
+                    console.error('File not found:', fileId);
+                    return;
+                }
+
+                dynamicContentTitle.textContent = file.name;
+
+                renameFileBtn.onclick = () => {
+                    const newName = prompt('Enter new name for ' + file.name + ':', file.name);
+                    if (newName && newName.trim() !== '') {
+                        file.name = newName.trim();
+                        dynamicContentTitle.textContent = file.name;
+                        updateFileList();
+                    }
+                };
+
+                clearIndividualFileBtn.onclick = () => {
+                    if (file.type === 'code' && activeCodeMirrorInstance) {
+                        activeCodeMirrorInstance.setValue('');
+                        file.content = '';
+                    } else if (file.type === 'drawing' && activeIndividualCanvasCtx) {
+                        activeIndividualCanvasCtx.clearRect(0, 0, activeIndividualCanvasCtx.canvas.width, activeIndividualCanvasCtx.canvas.height);
+                        file.content = [];
+                    }
+                };
+
+
+                if (file.type === 'code') {
+                    const textarea = document.createElement('textarea');
+                    textarea.id = `editor-${file.id}`;
+                    textarea.style.width = '100%';
+                    textarea.style.height = '100%';
+                    dynamicFileContentArea.appendChild(textarea);
+
+                    activeCodeMirrorInstance = CodeMirror.fromTextArea(textarea, {
+                        lineNumbers: true,
+                        mode: file.mode || 'javascript', // Use file's mode or default
+                        theme: 'dracula',
+                        indentUnit: 4,
+                        tabSize: 4,
+                        lineWrapping: true
+                    });
+                    activeCodeMirrorInstance.setValue(file.content);
+
+                    activeCodeMirrorInstance.on('change', (instance) => {
+                        files[file.id].content = instance.getValue();
+                    });
+
+                    setTimeout(() => activeCodeMirrorInstance.refresh(), 0);
+                    activeIndividualCanvasCtx = null;
+
+                } else if (file.type === 'drawing') {
+                    const canvas = document.createElement('canvas');
+                    canvas.id = `canvas-${file.id}`;
+                    canvas.className = 'shared-canvas';
+
+                    dynamicFileContentArea.appendChild(canvas);
+                    const ctx = canvas.getContext('2d');
+                    activeIndividualCanvasCtx = ctx;
+
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = 'var(--white)'; // Canvas ink to white
+
+                    let isIndividualDrawing = false;
+                    let lastIndividualX = 0;
+                    let lastIndividualY = 0;
+
+                    canvas.addEventListener('mousedown', (e) => {
+                        isIndividualDrawing = true;
+                        const pos = getCanvasMousePos(canvas, e);
+                        [lastIndividualX, lastIndividualY] = [pos.x, pos.y];
+                    });
+                    canvas.addEventListener('mousemove', (e) => {
+                        if (!isIndividualDrawing) return;
+                        const pos = getCanvasMousePos(canvas, e);
+                        const newX = pos.x;
+                        const newY = pos.y;
+                        drawLineOnCtx(ctx, lastIndividualX, lastIndividualY, newX, newY, ctx.strokeStyle, ctx.lineWidth);
+                        files[file.id].content.push({ x1: lastIndividualX, y1: lastIndividualY, x2: newX, y2: newY, color: ctx.strokeStyle, width: ctx.lineWidth });
+                        [lastIndividualX, lastIndividualY] = [newX, newY];
+                    });
+                    canvas.addEventListener('mouseup', () => isIndividualDrawing = false);
+                    canvas.addEventListener('mouseout', () => isIndividualDrawing = false);
+
+                    canvas.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        isIndividualDrawing = true;
+                        const pos = getCanvasTouchPos(canvas, e);
+                        [lastIndividualX, lastIndividualY] = [pos.x, pos.y];
+                    });
+                    canvas.addEventListener('touchmove', (e) => {
+                        e.preventDefault();
+                        if (!isIndividualDrawing) return;
+                        const pos = getCanvasTouchPos(canvas, e);
+                        const newX = pos.x;
+                        const newY = pos.y;
+                        drawLineOnCtx(ctx, lastIndividualX, lastIndividualY, newX, newY, ctx.strokeStyle, ctx.lineWidth);
+                        files[file.id].content.push({ x1: lastIndividualX, y1: lastIndividualY, x2: newX, y2: newY, color: ctx.strokeStyle, width: ctx.lineWidth });
+                        [lastIndividualX, lastIndividualY] = [newX, newY];
+                    });
+                    canvas.addEventListener('touchend', () => isIndividualDrawing = false);
+                    canvas.addEventListener('touchcancel', () => isIndividualDrawing = false);
+
+                    // Initial sizing for individual canvas
+                    canvas.width = canvas.offsetWidth;
+                    canvas.height = canvas.offsetHeight;
+                    redrawCanvas(ctx, file.content);
+
+                    const observer = new ResizeObserver(entries => {
+                        for (let entry of entries) {
+                            if (entry.target === dynamicFileContentArea) {
+                                // Pass the specific canvas, its context, and its history
+                                handleCanvasResize(canvas, ctx, file.content);
+                            }
+                        }
+                    });
+                    observer.observe(dynamicFileContentArea);
+                    activeCodeMirrorInstance = null;
+                }
+                updateFileList();
+                sideMenu.classList.remove('open');
+            }
+
+            function saveCurrentFileContent() {
+                if (currentActiveTabId && currentActiveTabId !== 'sharedCanvas' && currentActiveTabId !== 'sharedCodeEditor') {
+                    const file = files[currentActiveTabId];
+                    if (file && file.type === 'code' && activeCodeMirrorInstance) {
+                        file.content = activeCodeMirrorInstance.getValue();
+                    }
+                }
+            }
+
+            // --- Create New File Buttons ---
+            createNewCodeEditorBtn.addEventListener('click', () => {
+                const id = generateUniqueId();
+                const name = `Code Editor ${fileCounter}`;
+                files[id] = { type: 'code', name: name, content: `// Start coding in ${name}!\n\nfunction hello() {\n    console.log("Hello from your individual editor!");\n}`, mode: 'javascript' };
+                updateFileList();
+                showFile(id);
+            });
+
+            createNewDrawingCanvasBtn.addEventListener('click', () => {
+                const id = generateUniqueId();
+                const name = `Drawing Canvas ${fileCounter}`;
+                files[id] = { type: 'drawing', name: name, content: [] };
+                updateFileList();
+                showFile(id);
+            });
+
+            // --- Upload File Logic ---
+            uploadFileBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) {
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const fileContent = e.target.result;
+                    const fileName = file.name;
+                    const fileMode = getCodeMirrorMode(fileName);
+
+                    const id = generateUniqueId();
+                    files[id] = { type: 'code', name: fileName, content: fileContent, mode: fileMode };
+                    updateFileList();
+                    showFile(id);
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            });
+
+
+            showSharedCanvasViewBtn.addEventListener('click', showSharedCanvasView);
+            showSharedCodeEditorViewBtn.addEventListener('click', showSharedCodeEditorView);
+
+            // --- Initial Setup and Resize Observers ---
+
+            // Resize observer for the shared canvas container
+            const sharedCanvasResizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    if (entry.target === sharedCanvasContainer && currentActiveTabId === 'sharedCanvas') {
+                        handleCanvasResize(sharedCanvas, sharedCtx, sharedDrawingHistory);
+                    }
+                }
+            });
+            sharedCanvasResizeObserver.observe(sharedCanvasContainer);
+
+            // Resize observer for the shared code editor container
+            const sharedCodeEditorResizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    if (entry.target === sharedCodeEditorContainer && currentActiveTabId === 'sharedCodeEditor') {
+                        // Defer refresh to next animation frame
+                        requestAnimationFrame(() => {
+                            sharedCodeMirrorInstance.refresh();
+                        });
+                    }
+                }
+            });
+            sharedCodeEditorResizeObserver.observe(sharedCodeEditorContainer);
+
+
+            showSharedCanvasView();
+            updateFileList();
+
+            window.addEventListener('resize', () => {
+                if (activeCodeMirrorInstance) {
+                    activeCodeMirrorInstance.refresh();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
